@@ -4,11 +4,168 @@ author: Angel Legrand
 format: html
 execute:
   echo: false
-```{library(tidyverse)
-#| message:false}
-```{library}
-#| cache: true
-title:billboard
+---
+
+```{r}
+#| message: false
+library(tidyverse)
+billboard <- read_csv("data/billboard.csv", show_col_types = FALSE)
 ```
 
+The week columns are reshaped into `week` and `rank`, keeping the artist and
+track columns to identify each song.
+
+```{r}
+billboard_long <- billboard |>
+  pivot_longer(
+    cols = starts_with("wk"),
+    names_to = "week",
+    names_prefix = "wk",
+    names_transform = list(week = as.integer),
+    values_to = "rank"
+  )
+
+billboard_long |>
+  filter(!is.na(rank)) |>
+  group_by(artist, track) |>
+  summarise(
+    last_week = max(week),
+    last_rank = rank[which.max(week)],
+    .groups = "drop"
+  ) |>
+  filter(last_week == 20) |>
+  summarise(
+    Songs = n(),
+    Ranked_below_50 = sum(last_rank > 50),
+    .groups = "drop"
+  ) |>
+  knitr::kable()
+```
+
+Summarize each song's first rank, best rank, first week at its best rank, and
+total weeks on the chart. The three highlighted songs are the earliest and
+latest to reach number one, and the top-10 song with the longest chart run.
+
+```{r}
+song_summary <- billboard_long |>
+  filter(!is.na(rank)) |>
+  arrange(week) |>
+  group_by(artist, track) |>
+  summarise(
+    first_rank = first(rank),
+    best_rank = min(rank),
+    first_week_at_best = min(week[rank == min(rank)]),
+    total_weeks = n(),
+    .groups = "drop"
+  )
+
+notable_top_10 <- bind_rows(
+  song_summary |>
+    filter(best_rank == 1) |>
+    slice_min(first_week_at_best, n = 1, with_ties = FALSE) |>
+    mutate(trajectory = "Fastest to number one"),
+  song_summary |>
+    filter(best_rank == 1) |>
+    slice_max(first_week_at_best, n = 1, with_ties = FALSE) |>
+    mutate(trajectory = "Slowest to number one"),
+  song_summary |>
+    filter(best_rank <= 10) |>
+    slice_max(total_weeks, n = 1, with_ties = FALSE) |>
+    mutate(trajectory = "Longest top-10 chart run")
+) |>
+  select(trajectory, artist, track, first_rank, best_rank,
+         first_week_at_best, total_weeks)
+
+notable_top_10 |>
+  knitr::kable()
+```
+
+These three lines show the selected songs' rankings over their chart runs.
+
+```{r}
+top_10_long <- billboard_long |>
+  inner_join(
+    song_summary |>
+      filter(best_rank <= 10) |>
+      select(artist, track),
+    by = c("artist", "track")
+  )
+
+highlighted_songs <- notable_top_10 |>
+  distinct(artist, track) |>
+  mutate(song_name = paste(track, artist, sep = " — "))
+
+highlighted_long <- top_10_long |>
+  inner_join(
+    highlighted_songs,
+    by = c("artist", "track")
+  )
+
+ggplot(top_10_long, aes(x = week, y = rank,
+                        group = interaction(artist, track))) +
+  geom_line(color = "gray75", alpha = 0.5, na.rm = TRUE) +
+  geom_line(
+    data = highlighted_long,
+    aes(color = song_name),
+    linewidth = 1,
+    na.rm = TRUE
+  ) +
+  scale_y_reverse() +
+  labs(
+    title = "Top-10 Song Trajectories",
+    x = "Week on chart",
+    y = "Chart rank (1 is highest)",
+    color = "Notable songs"
+  )
+```
+
+This histogram shows the distribution of Billboard chart positions in week 1.
+
+```{r}
+ggplot(billboard, aes(x = wk1)) +
+  geom_histogram(binwidth = 10, boundary = 0) +
+  labs(
+    title = "Billboard Chart Positions in Week 1",
+    x = "Chart position",
+    y = "Number of songs",
+    subtitle = paste("Number of values:", sum(!is.na(billboard$wk1)))
+  )
+```
+
+This table counts the missing and present rankings for each selected week.
+
+```{r}
+billboard |>
+  select(wk1, wk4, wk10, wk20, wk40, wk76) |>
+  pivot_longer(
+    everything(),
+    names_to = "Week",
+    values_to = "Ranking"
+  ) |>
+  group_by(Week) |>
+  summarise(
+    Missing = sum(is.na(Ranking)),
+    Present = sum(!is.na(Ranking)),
+    .groups = "drop"
+  ) |>
+  mutate(Week = factor(Week, levels = c("wk1", "wk4", "wk10", "wk20", "wk40", "wk76"))) |>
+  arrange(Week) |>
+  mutate(Week = as.character(Week)) |>
+  knitr::kable()
+```
+
+Each line shows a song's ranking across the weeks it appeared on the chart.
+
+```{r}
+ggplot(
+  billboard_long,
+  aes(x = week, y = rank, group = interaction(artist, track))
+) +
+  geom_line(alpha = 0.2, na.rm = TRUE) +
+  scale_y_reverse() +
+  labs(
+    title = "Billboard Song Rankings Over Time",
+    x = "Week on chart",
+    y = "Chart rank (1 is highest)"
+  )
 ```
