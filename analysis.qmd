@@ -1,0 +1,12 @@
+---
+title: "Billboard Top 100"
+author: Angel Legrand
+format: html
+execute:
+  echo: false
+```{library(tidyverse)
+#| message:false}
+```
+
+title: billboard
+data/billboard.csv
