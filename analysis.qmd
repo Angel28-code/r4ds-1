@@ -6,7 +6,9 @@ execute:
   echo: false
 ```{library(tidyverse)
 #| message:false}
+```{library}
+#| cache: true
+title:billboard
 ```
 
-title: billboard
-data/billboard.csv
+```
